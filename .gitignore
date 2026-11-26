@@ -1,0 +1,26 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+*.tsbuildinfo
+
+# coverage
+coverage/
+
+# environment
+.env
+.env.*
+!.env.example
+
+# runtime data
+data/
+
+# logs
+*.log
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
