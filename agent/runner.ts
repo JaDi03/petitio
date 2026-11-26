@@ -10,8 +10,14 @@ import { getMetar } from "./tools/weather.js";
 // the owner reads the update on a phone; the full text stays in the log
 export const MAX_UPDATE_CHARS = 700;
 
+// the last paragraph holds the question to the owner, so a long update loses its middle, never its end
 export function clipUpdate(text: string): string {
-  return text.length <= MAX_UPDATE_CHARS ? text : `${text.slice(0, MAX_UPDATE_CHARS - 1).trimEnd()}…`;
+  if (text.length <= MAX_UPDATE_CHARS) return text;
+  const parts = text.trimEnd().split(/\n\s*\n/);
+  const last = parts.length > 1 ? (parts.at(-1) ?? "") : "";
+  const room = MAX_UPDATE_CHARS - last.length - 3;
+  if (last && room >= 200) return `${text.slice(0, room).trimEnd()}…\n\n${last}`;
+  return `${text.slice(0, MAX_UPDATE_CHARS - 1).trimEnd()}…`;
 }
 
 export const AGENT_TOOLS = [recordFacts, getMetar, getLaw, computeCompensation] as unknown as AgentTool[];

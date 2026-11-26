@@ -14,6 +14,8 @@ export interface DecodedMetar {
   windKt: number | null;
   gustKt: number | null;
   visibilityM: number | null;
+  // lowest visibility in one direction, reported after the prevailing value (e.g. "0650 0300")
+  minVisibilityM: number | null;
   phenomena: string[];
   ceilingFt: number | null;
   cumulonimbus: boolean;
@@ -25,7 +27,7 @@ const WX = /^(\+|-|VC)?(MI|PR|BC|DR|BL|SH|TS|FZ)?(DZ|RA|SN|SG|IC|PL|GR|GS|UP|BR|
 const WX_DESCRIPTOR_ONLY = /^(\+|-|VC)?(TS|SH)$/;
 
 export function decodeMetar(time: string, raw: string): DecodedMetar {
-  const out: DecodedMetar = { time, raw, windKt: null, gustKt: null, visibilityM: null, phenomena: [], ceilingFt: null, cumulonimbus: false, forecastTrend: null };
+  const out: DecodedMetar = { time, raw, windKt: null, gustKt: null, visibilityM: null, minVisibilityM: null, phenomena: [], ceilingFt: null, cumulonimbus: false, forecastTrend: null };
   // TEMPO and BECMG groups are forecasts, not observations
   const trendAt = raw.search(/\s(?:TEMPO|BECMG)\b/);
   const observed = (trendAt === -1 ? raw : raw.slice(0, trendAt)).replace(/\sNOSIG\b.*$/, "");
@@ -43,6 +45,11 @@ export function decodeMetar(time: string, raw: string): DecodedMetar {
     }
     if (/^\d{4}$/.test(tok) && out.visibilityM === null) {
       out.visibilityM = tok === "9999" ? 10000 : Number(tok);
+      continue;
+    }
+    const minVis = /^(\d{4})(?:N|NE|E|SE|S|SW|W|NW)?$/.exec(tok);
+    if (minVis && out.visibilityM !== null && out.minVisibilityM === null) {
+      out.minVisibilityM = Number(minVis[1]);
       continue;
     }
     const cloud = /^(FEW|SCT|BKN|OVC|VV)(\d{3})(CB|TCU)?$/.exec(tok);

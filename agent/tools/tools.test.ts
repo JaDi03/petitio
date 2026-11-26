@@ -49,6 +49,14 @@ describe("decodeMetar", () => {
     assert.equal(d.cumulonimbus, true);
     assert.deepEqual(d.phenomena, ["+TSRA"]);
   });
+
+  it("reads the directional minimum visibility after the prevailing one, and not runway values", () => {
+    const d = decodeMetar("t", "EDDF 240450Z AUTO 07006KT 0650 0300 R07L/1100D R07C/0225D FZFG VV003 M03/M04 Q1027 TEMPO 0400 OVC001");
+    assert.equal(d.visibilityM, 650);
+    assert.equal(d.minVisibilityM, 300);
+    assert.equal(decodeMetar("t", "EDDF 240850Z AUTO 07007KT 2400 BR OVC002 M03/M04 Q1027").minVisibilityM, null);
+    assert.equal(decodeMetar("t", "LFPG 200730Z 24016KT 6000 1200SW BR 10/08 Q1000").minVisibilityM, 1200);
+  });
 });
 
 describe("tool calls are validated and logged by code", () => {

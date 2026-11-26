@@ -38,7 +38,7 @@ describe("runner messages to the owner", () => {
         { function: { name: "get_metar", arguments: { icao: "LFPG", ...window } } },
         { function: { name: "get_law", arguments: { ref: "art5.3" } } },
       ] }),
-      reply({ content: "x".repeat(MAX_UPDATE_CHARS + 200) }),
+      reply({ content: `${"x".repeat(MAX_UPDATE_CHARS + 200)}\n\nShould I reject the voucher?` }),
     ]);
     const runner = createRunner({
       memory,
@@ -54,10 +54,10 @@ describe("runner messages to the owner", () => {
 
     assert.equal(sent.length, 3);
     assert.equal(sent[0], "Got it.");
-    assert.equal(sent[1], "Official weather at LFPG, 2 reports: observed: -SHRA, visibility at least 10 km.");
+    assert.equal(sent[1], "Official weather at LFPG, 2 reports: observed: -SHRA, lowest visibility 10 km.");
     const update = sent[2] ?? "";
     assert.equal(update.length, MAX_UPDATE_CHARS);
-    assert.ok(update.endsWith("…"));
+    assert.ok(update.endsWith("…\n\nShould I reject the voucher?"));
     assert.equal(logs.filter((l) => l.startsWith("🤔")).length, 1);
     assert.ok(!logs.some((l) => l.includes("no reason given")));
     assert.ok(logs.some((l) => l.startsWith("💬 full update:")));

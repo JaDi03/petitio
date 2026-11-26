@@ -12,10 +12,10 @@ export function afterTool(tool: string, ok: boolean, value: unknown): string | n
     const at = typeof v.icao === "string" ? ` at ${v.icao}` : "";
     if (reports.length === 0) return `No official weather reports found${at} for that window.`;
     const phenomena = [...new Set(reports.flatMap((r) => (Array.isArray(r.phenomena) ? r.phenomena.map(String) : [])))];
-    const vis = reports.map((r) => r.visibilityM).filter((x): x is number => typeof x === "number");
+    const vis = lowestVisibility(reports);
     const minVisKm = vis.length > 0 ? Math.min(...vis) / 1000 : null;
     const weather = phenomena.length > 0 ? `observed: ${phenomena.join(", ")}` : "no storm, snow or fog observed";
-    return `Official weather${at}, ${String(reports.length)} reports: ${weather}${minVisKm === null ? "" : `, visibility at least ${String(minVisKm)} km`}.`;
+    return `Official weather${at}, ${String(reports.length)} reports: ${weather}${minVisKm === null ? "" : `, lowest visibility ${String(minVisKm)} km`}.`;
   }
   if (tool === "compute_compensation") {
     if (v.inScope === false) return "This flight is outside EU Regulation 261/2004.";
@@ -25,6 +25,11 @@ export function afterTool(tool: string, ok: boolean, value: unknown): string | n
     return `${String(v.distanceKm)} km flight: ${String(v.compensationEur)} EUR is due.`;
   }
   return null;
+}
+
+// the directional minimum, when reported, is lower than the prevailing visibility
+function lowestVisibility(reports: Record<string, unknown>[]): number[] {
+  return reports.map((r) => (typeof r.minVisibilityM === "number" ? r.minVisibilityM : r.visibilityM)).filter((x): x is number => typeof x === "number");
 }
 
 function nums(rows: Record<string, unknown>[], key: string): number[] {
@@ -41,7 +46,7 @@ export function evidence(tool: string, value: unknown): string | null {
     const phenomena = [...new Set(reports.flatMap((r) => (Array.isArray(r.phenomena) ? r.phenomena.map(String) : [])))];
     const wind = nums(reports, "windKt");
     const gust = nums(reports, "gustKt");
-    const vis = nums(reports, "visibilityM");
+    const vis = lowestVisibility(reports);
     const ceiling = nums(reports, "ceilingFt");
     const parts = [
       `${String(reports.length)} METAR reports`,
