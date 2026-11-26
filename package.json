@@ -24,5 +24,9 @@
     "tsx": "4.23.15",
     "typescript": "6.0.3",
     "typescript-eslint": "8.74.0"
+  },
+  "dependencies": {
+    "ollama": "0.6.4",
+    "zod": "4.6.7"
   }
 }
