@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { findAirport } from "../knowledge/eu261/airports.js";
 import { defineTool } from "./tool.js";
 
 // Iowa Environmental Mesonet ASOS/METAR archive: https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py?help
@@ -77,14 +78,17 @@ export const getMetar = defineTool({
     "Get the official airport weather observations (METAR) for an ICAO airport between two UTC times (at most 48 hours). Returns raw reports and the decoded OBSERVED wind, gusts, visibility, ceiling and weather phenomena such as TS (thunderstorm), SN (snow) or FG (fog). forecastTrend holds TEMPO/BECMG text: a forecast of what might happen, never an observation.",
   schema: z
     .object({
-      icao: z.string().regex(/^[A-Z]{4}$/).describe("ICAO airport code, for example LFPG"),
+      icao: z.string().regex(/^[A-Z]{3,4}$/).describe("ICAO airport code, for example LFPG (a known IATA code such as CDG also works)"),
       from: iso,
       to: iso,
     })
     .strict()
     .refine((a) => Date.parse(a.to) > Date.parse(a.from), { error: "to must be after from" })
     .refine((a) => Date.parse(a.to) - Date.parse(a.from) <= MAX_WINDOW_H * 3_600_000, { error: "window over 48 hours" }),
-  async run({ icao, from, to }, ctx) {
+  async run({ icao: code, from, to }, ctx) {
+    // the weather archive only knows ICAO stations, so a 3-letter code must be one we know
+    const icao = code.length === 4 ? code : findAirport(code)?.icao;
+    if (!icao) throw new Error(`unknown IATA code ${code}: use the 4-letter ICAO code`);
     const url = new URL(IEM_URL);
     const params: [string, string][] = [
       ["station", icao], ["data", "metar"], ["sts", from], ["ets", to], ["tz", "Etc/UTC"], ["format", "onlycomma"],

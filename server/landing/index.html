@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Petitio: your flight claim, followed up until the airline pays</title>
+<meta name="description" content="Petitio is a personal agent on Fly.io Sprites that follows up a cancelled flight claim until the airline pays.">
+<link rel="stylesheet" href="/landing.css">
+</head>
+<body>
+<main>
+  <header>
+    <p class="tag">Personal agent on Fly.io Sprites</p>
+    <h1>Petitio</h1>
+    <p class="lead">Your flight was cancelled and the airline offers a voucher. Forward the email to Petitio. It checks the airline's excuse against official records, works out what the law says you are owed, and follows up until they pay.</p>
+  </header>
+
+  <section>
+    <h2>How it thinks</h2>
+    <ol class="steps">
+      <li><strong>Reads</strong> the airline's email you forward, and saves the facts to its case file.</li>
+      <li><strong>Checks</strong> every claim with a tool. "Bad weather"? It pulls the official airport weather reports (METAR) for that hour.</li>
+      <li><strong>Calculates</strong> the amount from EU Regulation 261/2004 in code, never from the language model.</li>
+      <li><strong>Asks you</strong> before it sends anything to the airline or answers an offer.</li>
+      <li><strong>Follows up</strong> by email and by phone, and tells you on Telegram what it did.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>A real run</h2>
+    <pre class="term"><code>📩 email from owner: "Your flight DA123 has been cancelled"
+🤔 the airline blames adverse weather, check the official observations
+🔧 get_metar LFPG 06:00-09:00 UTC
+   ↳ 6 reports: no storm, snow or fog observed, visibility at least 10 km.
+🔧 compute_compensation
+   ↳ 1062.5 km flight: 250 EUR is due.
+💬 "The weather excuse does not hold up. The 150 EUR voucher is below
+    the 250 EUR you are owed. Shall I refuse it?"</code></pre>
+  </section>
+
+  <section>
+    <h2>Built on Sprites</h2>
+    <ul class="parts">
+      <li><strong>Sprite</strong> runs the agent, its memory and this page, and sleeps when idle.</li>
+      <li><strong>Ollama connector</strong> for the model that decides which tool to use.</li>
+      <li><strong>AgentMail connector</strong> for the agent's own inbox.</li>
+      <li><strong>ElevenLabs connector</strong> for phone calls with the airline.</li>
+      <li><strong>Custom API connector</strong> for Telegram updates.</li>
+    </ul>
+    <p class="note">No provider key lives on the Sprite: every call goes through the Sprites gateway.</p>
+  </section>
+
+  <footer>
+    <p>Built for Hacksgiving 2026. Demo data only: Demo Air and its passengers are fictional.</p>
+    <p><a href="https://github.com/JaDi03/petitio">Source code on GitHub</a></p>
+  </footer>
+</main>
+</body>
+</html>

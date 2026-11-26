@@ -122,6 +122,25 @@ describe("agent loop", () => {
     assert.equal(user.match(/<untrusted /g)?.length, 2);
   });
 
+  it("keeps tool results as timed evidence and the agent's own earlier prose apart from it", async () => {
+    const ctx = setup();
+    await runAgent({ client: scripted([
+      reply({ tool_calls: [{ function: { name: "get_law", arguments: { ref: "art7.1" } } }] }),
+      reply({ content: "Wind was 16 knots." }),
+    ]), model: "m", tools, event, ctx });
+    const proof = ctx.memory.timeline(ctx.caseId).filter((e) => e.kind === "evidence");
+    assert.deepEqual(proof.map((e) => e.summary), ["law: read art7.1"]);
+
+    const next = scripted([reply({ content: "ok" })]);
+    await runAgent({ client: next, model: "m", tools, event, ctx });
+    const user = next.seen[0]?.find((m) => m.role === "user")?.content ?? "";
+    const evidencePart = user.slice(user.indexOf("Evidence"), user.indexOf("Timeline:"));
+    assert.match(evidencePart, /checked \S+Z: law: read art7\.1/);
+    assert.ok(!evidencePart.includes("16 knots"));
+    assert.equal(user.match(/16 knots/g)?.length, 1);
+    assert.match(user, /Your last message to the owner \(conversation, not evidence\): \S+ Wind was 16 knots\./);
+  });
+
   it("falls back to the visible text when thinking is empty, and never returns an empty update", async () => {
     const ctx = setup();
     const client = scripted([

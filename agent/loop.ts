@@ -1,6 +1,7 @@
 import type { ChatRequest, ChatResponse, Message } from "ollama";
 
 import type { Memory } from "./memory/store.js";
+import { evidence } from "./narrate.js";
 import { SYSTEM_PROMPT, neutralize, untrusted } from "./prompt.js";
 import { callTool, safeToolName, toModelTool, type AgentTool, type ToolContext } from "./tools/tool.js";
 
@@ -36,8 +37,18 @@ export interface RunResult {
 // the case file was built from outside text, so it goes to the model as data, never as instructions
 function caseContext(memory: Memory, caseId: string): string {
   const c = memory.getCase(caseId);
-  const timeline = memory.timeline(caseId).slice(-20).map((e) => `${e.at} ${e.kind}: ${e.summary}`).join("\n");
-  const body = `Status: ${c?.status ?? "unknown"}\nKnown facts: ${JSON.stringify(c?.facts ?? {})}\nTimeline:\n${timeline || "(empty)"}`;
+  const all = memory.timeline(caseId);
+  // the agent's own earlier prose is conversation, never a source for facts
+  const lastUpdate = all.filter((e) => e.kind === "agent_update").at(-1);
+  const proof = all.filter((e) => e.kind === "evidence").slice(-15).map((e) => `checked ${e.at}: ${e.summary}`).join("\n");
+  const timeline = all.filter((e) => e.kind !== "agent_update" && e.kind !== "evidence").slice(-20).map((e) => `${e.at} ${e.kind}: ${e.summary}`).join("\n");
+  const body = [
+    `Status: ${c?.status ?? "unknown"}`,
+    `Known facts: ${JSON.stringify(c?.facts ?? {})}`,
+    `Evidence (from tools, with the time it was checked):\n${proof || "(none yet)"}`,
+    `Timeline:\n${timeline || "(empty)"}`,
+    `Your last message to the owner (conversation, not evidence): ${lastUpdate ? `${lastUpdate.at} ${lastUpdate.summary}` : "(none)"}`,
+  ].join("\n");
   return untrusted("case-file", body, 12_000);
 }
 
@@ -67,6 +78,8 @@ export async function runAgent(opts: {
   ctx: ToolContext;
   limits?: Limits;
   think?: ChatRequest["think"];
+  // progress hook for the owner and the live log; it never changes what the agent may do
+  onStep?: (step: { tool: string; args: unknown; phase: "before" | "after"; ok?: boolean; value?: unknown; reason: string; turn: number; lastInTurn: boolean }) => Promise<void>;
 }): Promise<RunResult> {
   const { client, model, tools, event, ctx } = opts;
   const limits = opts.limits ?? DEFAULT_LIMITS;
@@ -111,13 +124,19 @@ export async function runAgent(opts: {
     }
     // the model's visible reasoning is recorded as the reason; it explains, it does not authorize
     const thinking = msg.thinking?.trim() ?? "";
-    const reason = (thinking || msg.content.trim()).slice(0, 400) || "(no reason given)";
-    for (const call of calls) {
+    const reason = (thinking || msg.content.trim()).slice(0, 400);
+    const logged = reason || "(no reason given)";
+    for (const [i, call] of calls.entries()) {
       if (toolCalls >= limits.maxToolCalls) return stop("tool_limit", "I stopped because this run reached its tool call limit.");
       toolCalls++;
       const name = safeToolName(call.function.name);
-      const result = await callTool(tools, call.function.name, call.function.arguments, reason, ctx);
+      const step = { tool: name, args: call.function.arguments, reason, turn: modelCalls, lastInTurn: i === calls.length - 1 };
+      await opts.onStep?.({ ...step, phase: "before" });
+      const result = await callTool(tools, call.function.name, call.function.arguments, logged, ctx);
+      await opts.onStep?.({ ...step, phase: "after", ok: result.ok, value: result.ok ? result.value : result.error });
       memory.addEvent(caseId, "tool", `${name}: ${result.ok ? "ok" : `refused (${result.error.slice(0, 200)})`}`);
+      const proof = result.ok ? evidence(name, result.value) : null;
+      if (proof) memory.addEvent(caseId, "evidence", proof);
       messages.push({ role: "tool", tool_name: name, content: toolMessage(result) });
     }
   }
