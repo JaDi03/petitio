@@ -1,5 +1,5 @@
 {
-  "name": "flight-claim-agent",
+  "name": "petitio",
   "version": "0.1.0",
   "private": true,
   "description": "A personal agent on Fly.io Sprites that follows a delayed or cancelled flight claim until the airline pays.",
