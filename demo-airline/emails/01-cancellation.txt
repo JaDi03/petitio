@@ -1,0 +1,17 @@
+From: Demo Air Customer Care <care@demo-air.example>
+Subject: Your flight DA123 has been cancelled
+Date: Tue, 17 Nov 2026 09:12:00 +0000
+
+Dear Alex Tester,
+
+We regret to inform you that your flight DA123 from Paris Charles de Gaulle (CDG) to Madrid (MAD),
+scheduled to depart on 20 November 2026 at 08:00 UTC and arrive at 10:00 UTC, has been cancelled
+due to adverse weather conditions.
+
+Booking reference: DEMO42
+
+As a gesture of goodwill we are pleased to offer you a travel voucher of 150 EUR, valid for 12 months.
+You can accept your voucher or request a refund on our claims page.
+
+Kind regards,
+Demo Air Customer Care

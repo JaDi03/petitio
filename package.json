@@ -15,7 +15,8 @@
     "start": "node dist/server/main.js",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "tsx --test \"**/*.test.ts\""
+    "test": "tsx --test \"**/*.test.ts\"",
+    "agent:try": "tsx agent/cli.ts"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
