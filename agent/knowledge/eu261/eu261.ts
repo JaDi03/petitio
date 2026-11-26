@@ -24,6 +24,8 @@ export interface CancellationResult {
   compensationEur: number;
   // the carrier may cut compensation by half when re-routing arrives within the Art. 7(2) window
   reducibleToEur: number | null;
+  // why reducibleToEur is what it is: the re-routing delay at arrival against the Art. 7(2) limit
+  reroute: { lateByH: number; limitH: number } | null;
   refs: LawRef[];
   // set when the result assumes a fact the passenger has not confirmed yet
   unconfirmed: "art3.1b" | null;
@@ -95,22 +97,24 @@ export function assessCancellation(input: CancellationInput): CancellationResult
   const refs: LawRef[] = ["art3.1"];
   const unconfirmed = !fromEu && inScope && input.receivedBenefitsInThirdCountry === undefined ? "art3.1b" : null;
   if (!inScope) {
-    return { inScope, distanceKm, intraCommunity, band: b, exception: null, compensationEur: 0, reducibleToEur: null, refs, unconfirmed };
+    return { inScope, distanceKm, intraCommunity, band: b, exception: null, compensationEur: 0, reducibleToEur: null, reroute: null, refs, unconfirmed };
   }
 
   const exception = exceptionFor(input);
   refs.push("art5.1c", "art5.3", "art5.4");
   if (exception) {
-    return { inScope, distanceKm, intraCommunity, band: b, exception, compensationEur: 0, reducibleToEur: null, refs, unconfirmed };
+    return { inScope, distanceKm, intraCommunity, band: b, exception, compensationEur: 0, reducibleToEur: null, reroute: null, refs, unconfirmed };
   }
 
   const compensationEur = AMOUNT_EUR[b];
   refs.push("art7.1", "art7.3", "art7.4");
   let reducibleToEur: number | null = null;
   const r = input.reroute;
-  if (r && r.arrival.getTime() - input.scheduledArrival.getTime() <= REDUCTION_WINDOW_H[b] * HOUR_MS) {
+  const lateMs = r ? r.arrival.getTime() - input.scheduledArrival.getTime() : 0;
+  if (r && lateMs <= REDUCTION_WINDOW_H[b] * HOUR_MS) {
     reducibleToEur = compensationEur / 2;
     refs.push("art7.2");
   }
-  return { inScope, distanceKm, intraCommunity, band: b, exception: null, compensationEur, reducibleToEur, refs, unconfirmed };
+  const reroute = r ? { lateByH: Math.round((lateMs / HOUR_MS) * 10) / 10, limitH: REDUCTION_WINDOW_H[b] } : null;
+  return { inScope, distanceKm, intraCommunity, band: b, exception: null, compensationEur, reducibleToEur, reroute, refs, unconfirmed };
 }

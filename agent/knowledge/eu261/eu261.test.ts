@@ -101,6 +101,7 @@ describe("assessCancellation Art. 5(1)(c) exceptions", () => {
     assert.equal(r.exception, null);
     assert.equal(r.compensationEur, 250);
     assert.equal(r.reducibleToEur, null);
+    assert.deepEqual(r.reroute, { lateByH: 4, limitH: 2 });
   });
 
   it("(iii) under 7 days notice with very close re-routing removes compensation", () => {
@@ -117,6 +118,7 @@ describe("assessCancellation Art. 5(1)(c) exceptions", () => {
     assert.equal(r.exception, null);
     assert.equal(r.compensationEur, 250);
     assert.equal(r.reducibleToEur, 125);
+    assert.deepEqual(r.reroute, { lateByH: 1.5, limitH: 2 });
     assert.ok(r.refs.includes("art7.2"));
   });
 });

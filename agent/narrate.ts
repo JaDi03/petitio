@@ -20,6 +20,8 @@ export function afterTool(tool: string, ok: boolean, value: unknown): string | n
   if (tool === "compute_compensation") {
     if (v.inScope === false) return "This flight is outside EU Regulation 261/2004.";
     if (typeof v.exception === "string") return `The regulation's exception (${v.exception}) applies, so no compensation is due.`;
+    // any unconfirmed condition keeps the amount conditional, whatever its reference
+    if (v.unconfirmed != null) return `${String(v.distanceKm)} km flight: ${String(v.compensationEur)} EUR is due, unless you received benefits or compensation and were given assistance in the departure country (Art. 3(1)(b), not confirmed yet).`;
     return `${String(v.distanceKm)} km flight: ${String(v.compensationEur)} EUR is due.`;
   }
   return null;
@@ -55,8 +57,13 @@ export function evidence(tool: string, value: unknown): string | null {
   if (tool === "compute_compensation") {
     if (v.inScope === false) return "compensation: outside EU Regulation 261/2004";
     if (typeof v.exception === "string") return `compensation: exception ${v.exception} applies, nothing due`;
-    const reducible = typeof v.reducibleToEur === "number" ? `, reducible to ${String(v.reducibleToEur)} EUR` : ", not reducible";
-    return `compensation: ${String(v.distanceKm)} km, ${String(v.compensationEur)} EUR due${reducible}`;
+    const r = obj(v.reroute);
+    const late = typeof r.lateByH === "number" ? `the alternative flight arrives ${String(r.lateByH)} h after the scheduled arrival, Art. 7(2) limit ${String(r.limitH)} h` : null;
+    const reducible = typeof v.reducibleToEur === "number"
+      ? `, reducible to ${String(v.reducibleToEur)} EUR because ${String(late)}`
+      : `, not reducible because ${late ?? "no alternative flight was given for this check"}`;
+    const condition = v.unconfirmed != null ? ", unless benefits or compensation were received and assistance was given in the departure country (Art. 3(1)(b), not confirmed yet)" : "";
+    return `compensation: ${String(v.distanceKm)} km, ${String(v.compensationEur)} EUR due${condition}${reducible}`;
   }
   if (tool === "get_law" && typeof v.ref === "string") return `law: read ${v.ref}`;
   return null;

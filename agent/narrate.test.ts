@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { evidence } from "./narrate.js";
+import { afterTool, evidence } from "./narrate.js";
 import { decodeMetar } from "./tools/weather.js";
 
 describe("evidence", () => {
@@ -15,7 +15,24 @@ describe("evidence", () => {
   });
 
   it("records the amount and whether it can be reduced", () => {
-    assert.equal(evidence("compute_compensation", { inScope: true, exception: null, distanceKm: 1062.5, compensationEur: 250, reducibleToEur: null }), "compensation: 1062.5 km, 250 EUR due, not reducible");
+    assert.equal(evidence("compute_compensation", { inScope: true, exception: null, distanceKm: 1062.5, compensationEur: 250, reducibleToEur: null, reroute: null }), "compensation: 1062.5 km, 250 EUR due, not reducible because no alternative flight was given for this check");
+    assert.equal(evidence("compute_compensation", { inScope: true, exception: null, distanceKm: 1062.5, compensationEur: 250, reducibleToEur: null, reroute: { lateByH: 5, limitH: 2 } }), "compensation: 1062.5 km, 250 EUR due, not reducible because the alternative flight arrives 5 h after the scheduled arrival, Art. 7(2) limit 2 h");
+    assert.equal(evidence("compute_compensation", { inScope: true, exception: null, distanceKm: 1062.5, compensationEur: 250, reducibleToEur: 125, reroute: { lateByH: 1.5, limitH: 2 } }), "compensation: 1062.5 km, 250 EUR due, reducible to 125 EUR because the alternative flight arrives 1.5 h after the scheduled arrival, Art. 7(2) limit 2 h");
     assert.equal(evidence("record_facts", { ok: true }), null);
+  });
+});
+
+describe("conditional compensation", () => {
+  it("never states an amount as due while Art. 3(1)(b) is unconfirmed", () => {
+    const value = { inScope: true, exception: null, distanceKm: 5837, compensationEur: 600, reducibleToEur: null, reroute: null, unconfirmed: "art3.1b" };
+    const line = afterTool("compute_compensation", true, value) ?? "";
+    const proof = evidence("compute_compensation", value) ?? "";
+    for (const text of [line, proof]) {
+      assert.match(text, /600 EUR/);
+      assert.match(text, /Art\. 3\(1\)\(b\)/);
+      assert.match(text, /not confirmed/);
+      assert.match(text, /unless .*benefits or compensation .*assistance/);
+    }
+    assert.match(afterTool("compute_compensation", true, { ...value, unconfirmed: "art3.2x" }) ?? "", /not confirmed/);
   });
 });
