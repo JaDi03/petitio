@@ -15,6 +15,18 @@ export default tseslint.config(
     },
   },
   {
+    rules: {
+      "@typescript-eslint/no-floating-promises": [
+        "error",
+        {
+          allowForKnownSafeCalls: [
+            { from: "package", package: "node:test", name: ["describe", "it", "test", "suite"] },
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ["**/*.mjs", "**/*.js"],
     ...tseslint.configs.disableTypeChecked,
   },
