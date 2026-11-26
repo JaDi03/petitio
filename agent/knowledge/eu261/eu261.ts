@@ -73,6 +73,10 @@ function assertValidDates(input: CancellationInput): void {
   const dates = [input.scheduledDeparture, input.scheduledArrival, input.noticeAt];
   if (input.reroute) dates.push(input.reroute.departure, input.reroute.arrival);
   if (dates.some((d) => Number.isNaN(d.getTime()))) throw new Error("invalid date");
+  if (input.scheduledArrival <= input.scheduledDeparture) throw new Error("arrival must be after departure");
+  if (input.reroute && input.reroute.arrival <= input.reroute.departure) {
+    throw new Error("re-routing arrival must be after its departure");
+  }
 }
 
 export function assessCancellation(input: CancellationInput): CancellationResult {
