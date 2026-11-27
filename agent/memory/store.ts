@@ -17,6 +17,8 @@ export interface CaseFacts {
   airlineEmail?: string;
   airlineFormUrl?: string;
   airlineReason?: string;
+  // set only by code when the airline confirms the claim; never by the model
+  claimRef?: string;
 }
 
 export type CaseStatus = "open" | "waiting" | "closed";

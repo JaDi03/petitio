@@ -157,6 +157,32 @@ describe("tool calls are validated and logged by code", () => {
     assert.deepEqual(c.memory.getCase(c.caseId)?.facts, {});
   });
 
+  it("record_facts keeps a case on one flight", async () => {
+    const all = [recordFacts, ...tools];
+    const c = ctx();
+    assert.ok((await callTool(all, "record_facts", { flightNumber: "DA456", bookingRef: "AB12CD" }, "x", c)).ok);
+    const other = await callTool(all, "record_facts", { flightNumber: "DA422", airlineReason: "strike" }, "x", c);
+    assert.ok(!other.ok && other.error.includes("flightNumber") && other.error.includes("DA456"));
+    // nothing from the refused call is saved, not even the fields that were allowed
+    assert.equal(c.memory.getCase(c.caseId)?.facts.airlineReason, undefined);
+    const same = await callTool(all, "record_facts", { flightNumber: "DA456", airlineReason: "fog" }, "x", c);
+    assert.ok(same.ok);
+    assert.equal(c.memory.getCase(c.caseId)?.facts.airlineReason, "fog");
+  });
+
+  it("record_facts freezes identity facts once the claim is filed", async () => {
+    const all = [recordFacts, ...tools];
+    const c = ctx();
+    c.memory.updateFacts(c.caseId, { flightNumber: "DA456", from: "FRA", passengerName: "Alex Doe", claimRef: "DA-141262" });
+    for (const patch of [{ from: "CDG" }, { passengerName: "Sam Roe" }]) {
+      const r = await callTool(all, "record_facts", patch, "x", c);
+      assert.ok(!r.ok && r.error.includes("DA-141262"), JSON.stringify(patch));
+    }
+    // a fact missing at filing time can still be learned, and the airline's reason can still change
+    assert.ok((await callTool(all, "record_facts", { to: "LIS", airlineReason: "weather" }, "x", c)).ok);
+    assert.equal(c.memory.getCase(c.caseId)?.facts.from, "FRA");
+  });
+
   it("a huge unknown tool name is stored short", async () => {
     const c = ctx();
     await callTool(tools, `x${"A".repeat(5000)}<script>`, {}, "x", c);

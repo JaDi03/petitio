@@ -12,6 +12,12 @@ const text = (max: number) =>
     .max(max)
     .regex(/^[^\r\n<>]+$/, "single line without < or >");
 
+// a case is one flight: what identifies the flight and the passenger never changes once known,
+// so an email about another flight cannot rewrite it before or after the claim is filed
+const IDENTITY_KEYS: readonly (keyof CaseFacts)[] = [
+  "flightNumber", "bookingRef", "passengerName", "airline", "from", "to", "scheduledDeparture", "scheduledArrival", "noticeAt",
+];
+
 export const recordFacts = defineTool({
   name: "record_facts",
   description:
@@ -33,6 +39,14 @@ export const recordFacts = defineTool({
     .strict(),
   run(facts, ctx) {
     const patch = Object.fromEntries(Object.entries(facts).filter(([, v]) => v !== undefined)) as CaseFacts;
+    const current = ctx.memory.getCase(ctx.caseId)?.facts ?? {};
+    const changed = IDENTITY_KEYS.filter((k) => patch[k] !== undefined && current[k] !== undefined && patch[k] !== current[k]);
+    if (changed.length > 0) {
+      const why = current.claimRef === undefined
+        ? `this case is for flight ${current.flightNumber ?? "?"}, booking ${current.bookingRef ?? "?"}; this version follows one flight at a time`
+        : `the claim ${current.claimRef} was already filed with these facts`;
+      throw new Error(`not saved: ${changed.join(", ")} cannot change because ${why}`);
+    }
     const updated = ctx.memory.updateFacts(ctx.caseId, patch);
     ctx.memory.addEvent(ctx.caseId, "facts", `Recorded: ${Object.keys(patch).join(", ")}`);
     return Promise.resolve({ saved: Object.keys(patch), facts: updated.facts });
