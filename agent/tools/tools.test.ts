@@ -49,6 +49,14 @@ describe("decodeMetar", () => {
     assert.equal(d.cumulonimbus, true);
     assert.deepEqual(d.phenomena, ["+TSRA"]);
   });
+
+  it("reads the directional minimum visibility after the prevailing one, and not runway values", () => {
+    const d = decodeMetar("t", "EDDF 240450Z AUTO 07006KT 0650 0300 R07L/1100D R07C/0225D FZFG VV003 M03/M04 Q1027 TEMPO 0400 OVC001");
+    assert.equal(d.visibilityM, 650);
+    assert.equal(d.minVisibilityM, 300);
+    assert.equal(decodeMetar("t", "EDDF 240850Z AUTO 07007KT 2400 BR OVC002 M03/M04 Q1027").minVisibilityM, null);
+    assert.equal(decodeMetar("t", "LFPG 200730Z 24016KT 6000 1200SW BR 10/08 Q1000").minVisibilityM, 1200);
+  });
 });
 
 describe("tool calls are validated and logged by code", () => {
@@ -67,6 +75,23 @@ describe("tool calls are validated and logged by code", () => {
     const [d] = c.memory.decisions(c.caseId);
     assert.equal(d?.allowed, true);
     assert.equal(d.reason, "airline blamed weather");
+  });
+
+  it("get_metar turns a known IATA code into its ICAO station and refuses an unknown one without the network", async () => {
+    let asked = "";
+    const c = ctx((url) => {
+      asked = url instanceof URL ? url.href : typeof url === "string" ? url : url.url;
+      return Promise.resolve(new Response(SAMPLE));
+    });
+    const r = await callTool(tools, "get_metar", { icao: "CDG", from: "2026-11-20T06:00:00Z", to: "2026-11-20T09:00:00Z" }, "x", c);
+    assert.ok(r.ok);
+    assert.match(asked, /station=LFPG/);
+    assert.equal((r.value as { icao: string; count: number }).icao, "LFPG");
+    assert.equal((r.value as { count: number }).count, 2);
+    const offline = ctx();
+    const unknown = await callTool(tools, "get_metar", { icao: "XQX", from: "2026-11-20T06:00:00Z", to: "2026-11-20T09:00:00Z" }, "x", offline);
+    assert.ok(!unknown.ok);
+    assert.match(unknown.error, /unknown IATA code XQX/);
   });
 
   it("get_metar refuses lowercase codes and windows over 48 hours without calling the network", async () => {

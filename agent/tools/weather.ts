@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { findAirport } from "../knowledge/eu261/airports.js";
 import { defineTool } from "./tool.js";
 
 // Iowa Environmental Mesonet ASOS/METAR archive: https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py?help
@@ -13,6 +14,8 @@ export interface DecodedMetar {
   windKt: number | null;
   gustKt: number | null;
   visibilityM: number | null;
+  // lowest visibility in one direction, reported after the prevailing value (e.g. "0650 0300")
+  minVisibilityM: number | null;
   phenomena: string[];
   ceilingFt: number | null;
   cumulonimbus: boolean;
@@ -24,7 +27,7 @@ const WX = /^(\+|-|VC)?(MI|PR|BC|DR|BL|SH|TS|FZ)?(DZ|RA|SN|SG|IC|PL|GR|GS|UP|BR|
 const WX_DESCRIPTOR_ONLY = /^(\+|-|VC)?(TS|SH)$/;
 
 export function decodeMetar(time: string, raw: string): DecodedMetar {
-  const out: DecodedMetar = { time, raw, windKt: null, gustKt: null, visibilityM: null, phenomena: [], ceilingFt: null, cumulonimbus: false, forecastTrend: null };
+  const out: DecodedMetar = { time, raw, windKt: null, gustKt: null, visibilityM: null, minVisibilityM: null, phenomena: [], ceilingFt: null, cumulonimbus: false, forecastTrend: null };
   // TEMPO and BECMG groups are forecasts, not observations
   const trendAt = raw.search(/\s(?:TEMPO|BECMG)\b/);
   const observed = (trendAt === -1 ? raw : raw.slice(0, trendAt)).replace(/\sNOSIG\b.*$/, "");
@@ -42,6 +45,11 @@ export function decodeMetar(time: string, raw: string): DecodedMetar {
     }
     if (/^\d{4}$/.test(tok) && out.visibilityM === null) {
       out.visibilityM = tok === "9999" ? 10000 : Number(tok);
+      continue;
+    }
+    const minVis = /^(\d{4})(?:N|NE|E|SE|S|SW|W|NW)?$/.exec(tok);
+    if (minVis && out.visibilityM !== null && out.minVisibilityM === null) {
+      out.minVisibilityM = Number(minVis[1]);
       continue;
     }
     const cloud = /^(FEW|SCT|BKN|OVC|VV)(\d{3})(CB|TCU)?$/.exec(tok);
@@ -77,14 +85,17 @@ export const getMetar = defineTool({
     "Get the official airport weather observations (METAR) for an ICAO airport between two UTC times (at most 48 hours). Returns raw reports and the decoded OBSERVED wind, gusts, visibility, ceiling and weather phenomena such as TS (thunderstorm), SN (snow) or FG (fog). forecastTrend holds TEMPO/BECMG text: a forecast of what might happen, never an observation.",
   schema: z
     .object({
-      icao: z.string().regex(/^[A-Z]{4}$/).describe("ICAO airport code, for example LFPG"),
+      icao: z.string().regex(/^[A-Z]{3,4}$/).describe("ICAO airport code, for example LFPG (a known IATA code such as CDG also works)"),
       from: iso,
       to: iso,
     })
     .strict()
     .refine((a) => Date.parse(a.to) > Date.parse(a.from), { error: "to must be after from" })
     .refine((a) => Date.parse(a.to) - Date.parse(a.from) <= MAX_WINDOW_H * 3_600_000, { error: "window over 48 hours" }),
-  async run({ icao, from, to }, ctx) {
+  async run({ icao: code, from, to }, ctx) {
+    // the weather archive only knows ICAO stations, so a 3-letter code must be one we know
+    const icao = code.length === 4 ? code : findAirport(code)?.icao;
+    if (!icao) throw new Error(`unknown IATA code ${code}: use the 4-letter ICAO code`);
     const url = new URL(IEM_URL);
     const params: [string, string][] = [
       ["station", icao], ["data", "metar"], ["sts", from], ["ets", to], ["tz", "Etc/UTC"], ["format", "onlycomma"],

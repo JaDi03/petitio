@@ -52,6 +52,10 @@ export interface Memory {
   timeline(caseId: string): TimelineEntry[];
   logDecision(caseId: string, d: Omit<Decision, "at">): void;
   decisions(caseId: string): Decision[];
+  // true the first time an external event id is seen, false on any repeat
+  firstSeen(id: string): boolean;
+  latestOpenCase(): CaseRecord | undefined;
+  countEventsSince(kind: string, sinceIso: string): number;
   close(): void;
 }
 
@@ -68,6 +72,10 @@ CREATE TABLE IF NOT EXISTS events (
   at TEXT NOT NULL,
   kind TEXT NOT NULL,
   summary TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS seen (
+  id TEXT PRIMARY KEY,
+  at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS decisions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -158,6 +166,18 @@ export function openMemory(path: string, now: () => Date = () => new Date()): Me
           allowed: r.allowed === 1,
           outcome: str(r.outcome),
         }));
+    },
+    firstSeen(id) {
+      const r = db.prepare("INSERT OR IGNORE INTO seen (id, at) VALUES (?, ?)").run(id, ts());
+      return r.changes === 1;
+    },
+    latestOpenCase() {
+      const row = db.prepare("SELECT id FROM cases WHERE status != 'closed' ORDER BY created_at DESC LIMIT 1").get();
+      return row ? getCase(str(row.id)) : undefined;
+    },
+    countEventsSince(kind, sinceIso) {
+      const row = db.prepare("SELECT COUNT(*) AS n FROM events WHERE kind = ? AND at >= ?").get(kind, sinceIso);
+      return Number(row?.n ?? 0);
     },
     close() {
       db.close();
