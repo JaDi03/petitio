@@ -10,7 +10,7 @@ export interface ChatClient {
 }
 
 export interface AgentEvent {
-  kind: "email_in" | "owner_message" | "call_transcript" | "tick";
+  kind: "email_in" | "airline_email" | "owner_message" | "call_transcript" | "tick";
   source: string;
   body: string;
 }

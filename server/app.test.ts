@@ -18,6 +18,7 @@ const tgSecret = randomBytes(24).toString("hex");
 const OWNER = "owner@example.com";
 const INBOX = "agent@agentmail.to";
 const CHAT = "4242";
+const AIRLINE = "claims@airline.example";
 
 let server: Server;
 let base = "";
@@ -32,6 +33,7 @@ before(async () => {
       memory,
       inbox: INBOX,
       owners: new Set([OWNER]),
+      airlineEmail: AIRLINE,
       ownerChatId: CHAT,
       agentmailSecret: mailSecret,
       telegramSecret: tgSecret,
@@ -130,6 +132,24 @@ describe("email webhook", () => {
     assert.equal(rest.length, 0);
     assert.equal(first.event.kind, "email_in");
     assert.match(first.event.body, /DA123/);
+  });
+
+  it("passes the airline's email to the open case, and never opens a case for it", async () => {
+    const first = mail("Claims@Airline.example");
+    assert.equal((await post("/hooks/agentmail", first, signed(first))).status, 200);
+    await settle();
+    assert.equal(queued.length, 0);
+    assert.equal(memory.latestOpenCase(), undefined);
+    const c = memory.createCase({});
+    const reply = mail(AIRLINE);
+    await post("/hooks/agentmail", reply, signed(reply));
+    await settle();
+    const [only, ...more] = queued;
+    assert.ok(only);
+    assert.equal(more.length, 0);
+    assert.equal(only.caseId, c.id);
+    assert.equal(only.event.kind, "airline_email");
+    assert.ok(memory.timeline(c.id).some((e) => e.kind === "airline_email"));
   });
 
   it("rejects an oversized body", async () => {

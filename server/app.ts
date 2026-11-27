@@ -25,6 +25,7 @@ export interface AppDeps {
   memory: Memory;
   inbox: string;
   owners: ReadonlySet<string>;
+  airlineEmail?: string;
   ownerChatId: string;
   agentmailSecret: string;
   telegramSecret: string;
@@ -88,7 +89,7 @@ export function createApp(deps: AppDeps) {
       end(res, 401);
       return;
     }
-    const c = classifyEmail(payload, deps.inbox, deps.owners);
+    const c = classifyEmail(payload, deps.inbox, deps.owners, deps.airlineEmail);
     if (c.kind === "ignore") {
       deps.log(`📭 email ignored: ${c.reason}`);
       end(res, 200, "{}");
@@ -100,10 +101,21 @@ export function createApp(deps: AppDeps) {
     }
     end(res, 200, "{}");
     const existing = deps.memory.latestOpenCase();
+    const body = `Subject: ${c.email.subject}\n\n${c.email.text}`;
+    if (c.email.role === "airline") {
+      // the airline answers a claim; it never opens one
+      if (!existing) {
+        deps.log("📭 airline email ignored: no open case");
+        return;
+      }
+      deps.log(`🛫 airline email: "${c.email.subject.slice(0, 80)}"`);
+      deps.memory.addEvent(existing.id, "airline_email", c.email.subject.replace(/\s+/g, " ").slice(0, 200));
+      void deps.enqueue(existing.id, { kind: "airline_email", source: "email from the airline", body }, "The airline wrote back. I'm reading it now.");
+      return;
+    }
     const caseId = existing?.id ?? deps.memory.createCase({}).id;
     deps.log(`📩 email from ${maskEmail(c.email.from)}: "${c.email.subject.slice(0, 80)}"`);
-    const event: AgentEvent = { kind: "email_in", source: "email forwarded by owner", body: `Subject: ${c.email.subject}\n\n${c.email.text}` };
-    void deps.enqueue(caseId, event, "Got it, I'm looking into this now.");
+    void deps.enqueue(caseId, { kind: "email_in", source: "email forwarded by owner", body }, "Got it, I'm looking into this now.");
   }
 
   async function telegram(req: IncomingMessage, res: ServerResponse): Promise<void> {

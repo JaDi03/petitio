@@ -14,6 +14,15 @@ function kind(from: string): string {
 }
 
 describe("sender check", () => {
+  it("tells the owner from the configured airline, and the airline is never the owner", () => {
+    const owner = classifyEmail(received("owner@example.com"), "petitio@agentmail.to", owners, "claims@airline.example");
+    assert.equal(owner.kind === "accept" && owner.email.role, "owner");
+    const airline = classifyEmail(received("Demo Air <Claims@Airline.example>"), "petitio@agentmail.to", owners, "claims@airline.example");
+    assert.equal(airline.kind === "accept" && airline.email.role, "airline");
+    assert.equal(classifyEmail(received("claims@airline.example"), "petitio@agentmail.to", owners).kind, "ignore");
+    assert.equal(classifyEmail(received("claims@airline.example.evil"), "petitio@agentmail.to", owners, "claims@airline.example").kind, "ignore");
+  });
+
   it("accepts the owner's own address, with or without a display name", () => {
     assert.equal(kind("owner@example.com"), "accept");
     assert.equal(kind("Owner Name <Owner@Example.com>"), "accept");

@@ -42,6 +42,7 @@ const handle = createApp({
   memory,
   inbox: config.AGENTMAIL_INBOX,
   owners: config.OWNER_EMAILS,
+  ...(config.airline ? { airlineEmail: config.airline.email } : {}),
   ownerChatId: config.OWNER_CHAT_ID,
   agentmailSecret: config.AGENTMAIL_WEBHOOK_SECRET,
   telegramSecret: config.TELEGRAM_WEBHOOK_SECRET,

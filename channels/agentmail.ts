@@ -25,6 +25,7 @@ const Received = z.object({
 
 export interface InboundEmail {
   eventId: string;
+  role: "owner" | "airline";
   from: string;
   subject: string;
   text: string;
@@ -46,15 +47,16 @@ export type Classified =
   | { kind: "accept"; email: InboundEmail }
   | { kind: "ignore"; reason: string };
 
-// only plain message.received for our inbox from an owner address opens work for the agent
-export function classifyEmail(payload: unknown, inbox: string, owners: ReadonlySet<string>): Classified {
+// only plain message.received for our inbox from an owner or the configured airline opens work for the agent
+export function classifyEmail(payload: unknown, inbox: string, owners: ReadonlySet<string>, airline?: string): Classified {
   const p = Received.safeParse(payload);
   if (!p.success) return { kind: "ignore", reason: "not a message.received event" };
   const m = p.data.message;
   if (m.inbox_id.toLowerCase() !== inbox.toLowerCase()) return { kind: "ignore", reason: "other inbox" };
   const from = senderAddress(m.from);
-  if (from === null || !owners.has(from)) return { kind: "ignore", reason: "sender is not the owner" };
-  return { kind: "accept", email: { eventId: p.data.event_id, from, subject: m.subject ?? "", text: m.text ?? "" } };
+  const role = from === null ? null : owners.has(from) ? "owner" : from === airline?.toLowerCase() ? "airline" : null;
+  if (from === null || role === null) return { kind: "ignore", reason: "sender is neither the owner nor the airline" };
+  return { kind: "accept", email: { eventId: p.data.event_id, role, from, subject: m.subject ?? "", text: m.text ?? "" } };
 }
 
 export function maskEmail(address: string): string {
