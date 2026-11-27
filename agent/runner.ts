@@ -2,7 +2,7 @@ import type { Actions } from "./actions.js";
 import { afterTool } from "./narrate.js";
 import { runAgent, type AgentEvent, type ChatClient, type Limits } from "./loop.js";
 import type { Memory } from "./memory/store.js";
-import { submitClaimForm } from "./tools/claim.js";
+import { CLAIM_ATTEMPT, claimState, submitClaimForm, UNKNOWN_CLAIM_HELP } from "./tools/claim.js";
 import { proposeEmail } from "./tools/propose.js";
 import { computeCompensation } from "./tools/compensation.js";
 import { recordFacts } from "./tools/facts.js";
@@ -21,6 +21,31 @@ export function clipUpdate(text: string): string {
   const room = MAX_UPDATE_CHARS - last.length - 3;
   if (last && room >= 200) return `${text.slice(0, room).trimEnd()}…\n\n${last}`;
   return `${text.slice(0, MAX_UPDATE_CHARS - 1).trimEnd()}…`;
+}
+
+export const UNCHECKED_NOTE = "(Part of this is not checked with my tools yet, so treat it as unconfirmed.)";
+
+const ARTICLE = /\b(?:Art(?:icle)?\.?)\s*(\d{1,2})((?:\(\d+\))*)/gi;
+const AMOUNT = /(?:(?:EUR|€)\s?(\d{2,5})\b)|(?:\b(\d{2,5})\s?(?:EUR|€|euros?)\b)/gi;
+
+// every article and euro amount the owner reads must appear in what the tools returned for this case
+export function uncheckedMentions(update: string, evidence: readonly string[]): string[] {
+  const proof = evidence.join("\n");
+  const misses: string[] = [];
+  for (const m of update.matchAll(ARTICLE)) {
+    const art = m[1] ?? "";
+    const parens = m[2] ?? "";
+    const paras = [...parens.matchAll(/\((\d+)\)/g)].map((p) => p[1]).join(".");
+    const known = paras
+      ? proof.includes(`art${art}.${paras}`) || proof.includes(`Art. ${art}${parens}`)
+      : proof.includes(`art${art}.`) || proof.includes(`Art. ${art}(`);
+    if (!known) misses.push(m[0]);
+  }
+  for (const m of update.matchAll(AMOUNT)) {
+    const n = m[1] ?? m[2] ?? "";
+    if (!proof.includes(`${n} EUR`) && !proof.includes(`EUR ${n}`)) misses.push(m[0]);
+  }
+  return misses;
 }
 
 export const AGENT_TOOLS = [recordFacts, getMetar, getLaw, computeCompensation, submitClaimForm, proposeEmail] as unknown as AgentTool[];
@@ -42,6 +67,19 @@ export interface RunnerDeps {
   limits?: Limits;
   now?: () => Date;
   actions?: Actions;
+}
+
+// what a failed run tells the owner, from what this run actually did with the airline
+export function failureNote(memory: Memory, caseId: string): string {
+  const events = memory.timeline(caseId);
+  const start = events.map((e) => e.kind).lastIndexOf("run_start");
+  const sentForm = events.slice(start + 1).some((e) => e.kind === CLAIM_ATTEMPT);
+  const oops = "Something went wrong on my side while working on this.";
+  if (!sentForm) return `${oops} Nothing was sent to the airline. I'll need another try.`;
+  const state = claimState(memory, caseId);
+  if (state === "filed") return `${oops} Your claim is filed (case ${memory.getCase(caseId)?.facts.claimRef ?? ""}); I'll need another try for the rest.`;
+  if (state === "none") return `${oops} The airline's form did not take the claim, so nothing is filed. I'll need another try.`;
+  return `${oops} I sent the claim form, but I don't know if the airline got it. ${UNKNOWN_CLAIM_HELP}`;
 }
 
 // one run at a time: events queue behind each other so a case is never worked twice at once
@@ -106,10 +144,13 @@ export function createRunner(deps: RunnerDeps) {
       await sendProgress();
       deps.log(`💬 update to owner (${String(result.modelCalls)} model calls, ${String(result.toolCalls)} tools, ${String(result.tokens.input + result.tokens.output)} tokens)`);
       if (result.update.length > MAX_UPDATE_CHARS) deps.log(`💬 full update: ${result.update.replace(/\s+/g, " ")}`);
-      await safeSend(clipUpdate(result.update));
+      const proof = deps.memory.timeline(caseId).filter((e) => e.kind === "evidence" || e.kind === "claim_filed").map((e) => e.summary);
+      const misses = uncheckedMentions(result.update, proof);
+      if (misses.length > 0) deps.log(`⚠️  update mentions what no tool returned: ${misses.join(", ").slice(0, 160)}`);
+      await safeSend(misses.length > 0 ? `${clipUpdate(result.update)}\n\n${UNCHECKED_NOTE}` : clipUpdate(result.update));
     } catch (e) {
       deps.log(`❌ run failed: ${e instanceof Error ? e.message.slice(0, 200) : "unknown"}`);
-      await safeSend("Something went wrong on my side while working on this. Nothing was sent to the airline. I'll need another try.");
+      await safeSend(failureNote(deps.memory, caseId));
     } finally {
       clearInterval(typing);
     }
