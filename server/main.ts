@@ -5,6 +5,7 @@ import { Ollama } from "ollama";
 
 import { DEFAULT_LIMITS } from "../agent/loop.js";
 import { openMemory } from "../agent/memory/store.js";
+import { pauseSwitch } from "../agent/pause.js";
 import { createRunner } from "../agent/runner.js";
 import { telegramClient } from "../channels/telegram.js";
 import { createApp } from "./app.js";
@@ -47,6 +48,7 @@ const handle = createApp({
   enqueue: (caseId, event, ack) => runner.enqueue(caseId, event, ack),
   reply: (text) => telegram.send(text),
   log,
+  pause: pauseSwitch(config.DATA_DIR),
 });
 
 createServer((req, res) => { void handle(req, res); }).listen(config.PORT, () => {

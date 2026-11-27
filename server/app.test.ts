@@ -8,6 +8,7 @@ import { Webhook } from "svix";
 
 import type { AgentEvent } from "../agent/loop.js";
 import { openMemory, type Memory } from "../agent/memory/store.js";
+import { memoryPause, type PauseSwitch } from "../agent/pause.js";
 import { createApp } from "./app.js";
 import { loadConfig } from "./config.js";
 
@@ -23,6 +24,7 @@ let base = "";
 let memory: Memory;
 let queued: { caseId: string; event: AgentEvent }[] = [];
 let replies: string[] = [];
+let pause: PauseSwitch = memoryPause();
 
 before(async () => {
   server = createServer((req, res) => {
@@ -42,6 +44,7 @@ before(async () => {
         return Promise.resolve();
       },
       log: () => undefined,
+      pause,
     })(req, res);
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
@@ -56,6 +59,7 @@ beforeEach(() => {
   memory = openMemory(":memory:");
   queued = [];
   replies = [];
+  pause = memoryPause();
 });
 
 function mail(from: string, eventId = randomBytes(8).toString("hex"), inbox = INBOX) {
@@ -151,6 +155,22 @@ describe("telegram webhook", () => {
     assert.equal(replies.length + queued.length, 0);
   });
 
+  it("pauses and resumes actions only for the owner, without the model", async () => {
+    const h = { "x-telegram-bot-api-secret-token": tgSecret };
+    memory.createCase({});
+    await post("/hooks/telegram", update(999, "/pause"), h);
+    await settle();
+    assert.equal(pause.paused(), false);
+    await post("/hooks/telegram", update(4242, " /PAUSE "), h);
+    await settle();
+    assert.equal(pause.paused(), true);
+    await post("/hooks/telegram", update(4242, "/resume"), h);
+    await settle();
+    assert.equal(pause.paused(), false);
+    assert.equal(queued.length, 0);
+    assert.equal(replies.length, 2);
+  });
+
   it("greets the owner when there is no case, and passes messages to an open case once", async () => {
     const h = { "x-telegram-bot-api-secret-token": tgSecret };
     await post("/hooks/telegram", update(4242, "/start"), h);
@@ -175,5 +195,36 @@ describe("config", () => {
       () => loadConfig({ TELEGRAM_WEBHOOK_SECRET: "short-secret-value" }),
       (e: Error) => e.message.includes("TELEGRAM_WEBHOOK_SECRET") && !e.message.includes("short-secret-value"),
     );
+  });
+  const env = {
+    OLLAMA_CONNECTOR_ID: "ollama-conn-1",
+    TELEGRAM_CONNECTOR_ID: "telegram-conn-1",
+    TELEGRAM_WEBHOOK_SECRET: tgSecret,
+    OWNER_CHAT_ID: CHAT,
+    AGENTMAIL_INBOX: INBOX,
+    AGENTMAIL_WEBHOOK_SECRET: mailSecret,
+    OWNER_EMAILS: OWNER,
+  };
+  const airline = {
+    AGENTMAIL_CONNECTOR_ID: "agentmail-conn-1",
+    AIRLINE_NAME: "Demo Air",
+    AIRLINE_EMAIL: "Claims@Airline.example",
+    AIRLINE_FORM_URL: "https://airline.example/claims",
+  };
+
+  it("runs without an airline, and needs all airline settings together", () => {
+    assert.equal(loadConfig(env).airline, null);
+    const full = loadConfig({ ...env, ...airline }).airline;
+    assert.ok(full);
+    assert.equal(full.email, "claims@airline.example");
+    assert.equal(full.formUrl.host, "airline.example");
+    assert.throws(() => loadConfig({ ...env, AIRLINE_EMAIL: airline.AIRLINE_EMAIL }), /AIRLINE_EMAIL/);
+  });
+
+  it("refuses an airline that is the owner or the agent, or a form without https", () => {
+    for (const AIRLINE_EMAIL of [OWNER.toUpperCase(), INBOX]) {
+      assert.throws(() => loadConfig({ ...env, ...airline, AIRLINE_EMAIL }), /AIRLINE_EMAIL/, AIRLINE_EMAIL);
+    }
+    assert.throws(() => loadConfig({ ...env, ...airline, AIRLINE_FORM_URL: "http://airline.example/claims" }), /AIRLINE_FORM_URL/);
   });
 });

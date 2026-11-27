@@ -9,6 +9,10 @@ const ALLOWED = {
   AGENTMAIL_WEBHOOK_SECRET: /^whsec_[A-Za-z0-9+/=]{16,}$/,
   OWNER_EMAILS: /^[^\s,]+@[^\s,]+(,[^\s,]+@[^\s,]+)*$/,
   OWNER_CHAT_ID: /^-?\d{1,20}$/,
+  AGENTMAIL_CONNECTOR_ID: /^[A-Za-z0-9_-]{8,64}$/,
+  AIRLINE_NAME: /^[A-Za-z0-9 .&'-]{2,60}$/,
+  AIRLINE_EMAIL: /^[^\s,@]+@[^\s,@]+\.[^\s,@]+$/,
+  AIRLINE_FORM_URL: /^https:\/\/[^\s]+$/,
 };
 
 const name = process.argv[2];

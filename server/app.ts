@@ -3,6 +3,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 
 import type { Memory } from "../agent/memory/store.js";
 import type { AgentEvent } from "../agent/loop.js";
+import type { PauseSwitch } from "../agent/pause.js";
 import { classifyEmail, maskEmail, verifyAgentMail } from "../channels/agentmail.js";
 import { ownerMessage, validTelegramSecret } from "../channels/telegram.js";
 
@@ -30,6 +31,7 @@ export interface AppDeps {
   enqueue: (caseId: string, event: AgentEvent, ack: string) => Promise<void>;
   reply: (text: string) => Promise<void>;
   log: (line: string) => void;
+  pause: PauseSwitch;
 }
 
 class TooLarge extends Error {}
@@ -126,8 +128,17 @@ export function createApp(deps: AppDeps) {
     }
     if (!deps.memory.firstSeen(`telegram:${String(msg.updateId)}`)) return;
     deps.log(`💬 owner on telegram: "${msg.text.slice(0, 80)}"`);
+    const command = msg.text.trim().toLowerCase();
+    if (command === "/pause" || command === "/resume") {
+      deps.pause.set(command === "/pause");
+      deps.log(command === "/pause" ? "⏸️  actions paused by the owner" : "▶️  actions resumed by the owner");
+      await deps.reply(command === "/pause"
+        ? "Paused. I won't fill forms or send anything to the airline until you send /resume."
+        : "Resumed. I can act on your claims again.");
+      return;
+    }
     const open = deps.memory.latestOpenCase();
-    if (msg.text.trim() === "/start" || !open) {
+    if (command === "/start" || !open) {
       await deps.reply("Hi, I'm Petitio. Forward me the airline's email about your cancelled flight and I'll follow it up until they pay.");
       return;
     }
