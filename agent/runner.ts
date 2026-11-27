@@ -3,6 +3,7 @@ import { afterTool } from "./narrate.js";
 import { runAgent, type AgentEvent, type ChatClient, type Limits } from "./loop.js";
 import type { Memory } from "./memory/store.js";
 import { submitClaimForm } from "./tools/claim.js";
+import { proposeEmail } from "./tools/propose.js";
 import { computeCompensation } from "./tools/compensation.js";
 import { recordFacts } from "./tools/facts.js";
 import { getLaw } from "./tools/law.js";
@@ -22,7 +23,7 @@ export function clipUpdate(text: string): string {
   return `${text.slice(0, MAX_UPDATE_CHARS - 1).trimEnd()}…`;
 }
 
-export const AGENT_TOOLS = [recordFacts, getMetar, getLaw, computeCompensation, submitClaimForm] as unknown as AgentTool[];
+export const AGENT_TOOLS = [recordFacts, getMetar, getLaw, computeCompensation, submitClaimForm, proposeEmail] as unknown as AgentTool[];
 
 export interface Notifier {
   send(text: string): Promise<void>;

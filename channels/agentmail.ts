@@ -62,3 +62,17 @@ export function classifyEmail(payload: unknown, inbox: string, owners: ReadonlyS
 export function maskEmail(address: string): string {
   return address.replace(/^(.)[^@]*@/, "$1***@");
 }
+
+// AgentMail API through the Sprites connector: POST /v0/inboxes/{inbox_id}/messages/send
+export function agentmailSender(opts: { gateway: string; connectorId: string; inbox: string; fetch: typeof fetch }) {
+  const url = `${opts.gateway}/agentmail/${opts.connectorId}/v0/inboxes/${encodeURIComponent(opts.inbox)}/messages/send`;
+  return async (to: string, subject: string, text: string): Promise<void> => {
+    const res = await opts.fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ to: [to], subject, text }),
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (!res.ok) throw new Error(`agentmail send HTTP ${String(res.status)}`);
+  };
+}

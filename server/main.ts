@@ -8,6 +8,8 @@ import { openMemory } from "../agent/memory/store.js";
 import type { Actions } from "../agent/actions.js";
 import { pauseSwitch } from "../agent/pause.js";
 import { createRunner } from "../agent/runner.js";
+import { decideApproval } from "../agent/approvals.js";
+import { agentmailSender } from "../channels/agentmail.js";
 import { fileClaimInBrowser } from "../channels/browser.js";
 import { telegramClient } from "../channels/telegram.js";
 import { createApp } from "./app.js";
@@ -36,6 +38,16 @@ const actions: Actions | undefined = config.airline
       agentInbox: config.AGENTMAIL_INBOX,
       paused: () => pause.paused(),
       fileClaim: fileClaimInBrowser,
+      sendEmail: agentmailSender({ gateway: config.SPRITES_GATEWAY, connectorId: config.airline.connectorId, inbox: config.AGENTMAIL_INBOX, fetch }),
+      askOwner: (a) =>
+        telegram.ask(`Shall I send this email to ${config.airline?.name ?? "the airline"} (${a.to})?
+
+Subject: ${a.subject}
+
+${a.body}`, [
+          { text: "Send it", data: `ap:${a.id}:y` },
+          { text: "Don't send", data: `ap:${a.id}:n` },
+        ]),
       async tellOwner(text, photos = []) {
         await telegram.send(text);
         for (const p of photos) {
@@ -70,6 +82,8 @@ const handle = createApp({
   reply: (text) => telegram.send(text),
   log,
   pause,
+  ...(actions ? { decide: (id: string, yes: boolean) => decideApproval({ memory, actions, now: () => new Date() }, id, yes) } : {}),
+  taps: { answer: (id, text) => telegram.answerTap(id, text), clear: (messageId) => telegram.clearButtons(messageId) },
 });
 
 createServer((req, res) => { void handle(req, res); }).listen(config.PORT, () => {

@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -45,6 +45,22 @@ export interface Decision {
   outcome: string;
 }
 
+export type ApprovalStatus = "pending" | "sending" | "sent" | "declined" | "expired" | "failed" | "stale";
+
+// an exact action the owner must approve; code runs exactly this text, never a new one
+export interface Approval {
+  id: string;
+  caseId: string;
+  kind: string;
+  to: string;
+  subject: string;
+  body: string;
+  amountEur: number;
+  status: ApprovalStatus;
+  createdAt: string;
+  expiresAt: string;
+}
+
 export interface Memory {
   createCase(facts: CaseFacts): CaseRecord;
   getCase(id: string): CaseRecord | undefined;
@@ -58,6 +74,12 @@ export interface Memory {
   firstSeen(id: string): boolean;
   latestOpenCase(): CaseRecord | undefined;
   countEventsSince(kind: string, sinceIso: string): number;
+  createApproval(a: Omit<Approval, "id" | "status" | "createdAt">): Approval;
+  getApproval(id: string): Approval | undefined;
+  pendingApproval(caseId: string, kind: string): Approval | undefined;
+  // true only for the one caller that moves the approval out of "pending"
+  takeApproval(id: string, to: ApprovalStatus): boolean;
+  setApprovalStatus(id: string, status: ApprovalStatus): void;
   close(): void;
 }
 
@@ -78,6 +100,18 @@ CREATE TABLE IF NOT EXISTS events (
 CREATE TABLE IF NOT EXISTS seen (
   id TEXT PRIMARY KEY,
   at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS approvals (
+  id TEXT PRIMARY KEY,
+  case_id TEXT NOT NULL REFERENCES cases(id),
+  kind TEXT NOT NULL,
+  to_addr TEXT NOT NULL,
+  subject TEXT NOT NULL,
+  body TEXT NOT NULL,
+  amount_eur INTEGER NOT NULL,
+  status TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS decisions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -112,6 +146,23 @@ export function openMemory(path: string, now: () => Date = () => new Date()): Me
       createdAt: str(row.created_at),
       facts: JSON.parse(str(row.facts)) as CaseFacts,
     };
+  };
+
+  const toApproval = (r: Record<string, unknown>): Approval => ({
+    id: str(r.id),
+    caseId: str(r.case_id),
+    kind: str(r.kind),
+    to: str(r.to_addr),
+    subject: str(r.subject),
+    body: str(r.body),
+    amountEur: Number(r.amount_eur),
+    status: str(r.status) as ApprovalStatus,
+    createdAt: str(r.created_at),
+    expiresAt: str(r.expires_at),
+  });
+  const getApproval = (id: string): Approval | undefined => {
+    const row = db.prepare("SELECT * FROM approvals WHERE id = ?").get(id);
+    return row ? toApproval(row) : undefined;
   };
 
   const mustGet = (id: string): CaseRecord => {
@@ -180,6 +231,28 @@ export function openMemory(path: string, now: () => Date = () => new Date()): Me
     countEventsSince(kind, sinceIso) {
       const row = db.prepare("SELECT COUNT(*) AS n FROM events WHERE kind = ? AND at >= ?").get(kind, sinceIso);
       return Number(row?.n ?? 0);
+    },
+    createApproval(a) {
+      const id = randomBytes(9).toString("base64url");
+      db.prepare(
+        "INSERT INTO approvals (id, case_id, kind, to_addr, subject, body, amount_eur, status, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)",
+      ).run(id, a.caseId, a.kind, a.to, a.subject, a.body, a.amountEur, ts(), a.expiresAt);
+      const created = getApproval(id);
+      if (!created) throw new Error("approval not stored");
+      return created;
+    },
+    getApproval,
+    pendingApproval(caseId, kind) {
+      const row = db
+        .prepare("SELECT * FROM approvals WHERE case_id = ? AND kind = ? AND status = 'pending' ORDER BY created_at DESC LIMIT 1")
+        .get(caseId, kind);
+      return row ? toApproval(row) : undefined;
+    },
+    takeApproval(id, to) {
+      return db.prepare("UPDATE approvals SET status = ? WHERE id = ? AND status = 'pending'").run(to, id).changes === 1;
+    },
+    setApprovalStatus(id, status) {
+      db.prepare("UPDATE approvals SET status = ? WHERE id = ?").run(status, id);
     },
     close() {
       db.close();

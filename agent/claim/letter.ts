@@ -1,5 +1,6 @@
 import { findAirport } from "../knowledge/eu261/airports.js";
 import type { CancellationResult } from "../knowledge/eu261/eu261.js";
+import { LAW } from "../knowledge/eu261/law.js";
 import type { CaseFacts } from "../memory/store.js";
 
 export const CLAIM_TEXT_MAX = 2000;
@@ -22,6 +23,14 @@ export function splitName(full: string): { firstName: string; lastName: string }
   return { firstName: words[0] ?? "", lastName: words.slice(1).join(" ") };
 }
 
+// nothing is asked of the airline unless the regulation gives the passenger money
+export function assertClaimable(result: CancellationResult): void {
+  if (!result.inScope) throw new Error("this flight is outside Regulation 261/2004, so there is nothing to claim");
+  if (result.exception !== null) throw new Error(`exception ${result.exception} of Article 5(1)(c) applies, so there is nothing to claim`);
+  if (result.unconfirmed !== null) throw new Error("ask the owner about Article 3(1)(b) before filing");
+  if (!(result.compensationEur > 0)) throw new Error("the compensation for this flight is EUR 0, so there is nothing to claim");
+}
+
 // every sentence is fixed text filled with case facts and code results; nothing comes from the model
 export function claimFields(facts: CaseFacts, result: CancellationResult): ClaimFields {
   const { passengerName, bookingRef, flightNumber, from, to, scheduledDeparture, noticeAt } = facts;
@@ -30,9 +39,7 @@ export function claimFields(facts: CaseFacts, result: CancellationResult): Claim
   }
   const name = splitName(passengerName);
   if (!name) throw new Error("the passenger's full name (first and last) is needed");
-  if (!result.inScope) throw new Error("this flight is outside Regulation 261/2004, so there is nothing to claim");
-  if (result.exception !== null) throw new Error(`exception ${result.exception} of Article 5(1)(c) applies, so there is nothing to claim`);
-  if (result.unconfirmed !== null) throw new Error("ask the owner about Article 3(1)(b) before filing");
+  assertClaimable(result);
 
   const fromName = findAirport(from)?.name ?? from;
   const toName = findAirport(to)?.name ?? to;
@@ -47,4 +54,41 @@ export function claimFields(facts: CaseFacts, result: CancellationResult): Claim
   ].join("\n\n");
   if (description.length > CLAIM_TEXT_MAX) throw new Error("claim text is over the form's limit");
   return { ...name, bookingRef, flightNumber, flightDate: scheduledDeparture.slice(0, 10), description };
+}
+
+export const EMAIL_KINDS = ["reject_voucher", "follow_up"] as const;
+export type EmailKind = (typeof EMAIL_KINDS)[number];
+
+export interface Email {
+  subject: string;
+  body: string;
+}
+
+// letters to the airline: fixed sentences, case facts, code amounts and the regulation's own words
+export function airlineEmail(kind: EmailKind, input: { airline: string; facts: CaseFacts; amountEur: number; filedOn: string }): Email {
+  const { facts, airline, amountEur, filedOn } = input;
+  const { claimRef, flightNumber, passengerName, bookingRef } = facts;
+  if (!claimRef || !flightNumber || !passengerName || !bookingRef) throw new Error("the claim has not been filed yet");
+  const sign = `Kind regards,\n${passengerName}\nBooking reference ${bookingRef}`;
+  if (kind === "reject_voucher") {
+    return {
+      subject: `Claim ${claimRef}: compensation in money, not a voucher`,
+      body: [
+        `Dear ${airline},`,
+        `Thank you for your answer to claim ${claimRef} about the cancelled flight ${flightNumber}. You offered a travel voucher. I do not accept it.`,
+        `Article 7(3) of Regulation (EC) No 261/2004 says: "${LAW["art7.3"]}" I do not give that agreement.`,
+        `Please pay the EUR ${String(amountEur)} compensation by bank transfer and tell me what details you need for it.`,
+        sign,
+      ].join("\n\n"),
+    };
+  }
+  return {
+    subject: `Claim ${claimRef}: waiting for your answer`,
+    body: [
+      `Dear ${airline},`,
+      `On ${filedOn} I filed claim ${claimRef} for the cancelled flight ${flightNumber}, asking for EUR ${String(amountEur)} under Article 7(1) of Regulation (EC) No 261/2004. I have not had an answer yet.`,
+      "Please tell me when you will pay, or send the evidence you rely on if you refuse.",
+      sign,
+    ].join("\n\n"),
+  };
 }
