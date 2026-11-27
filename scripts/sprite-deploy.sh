@@ -14,7 +14,8 @@ echo "==> code ($REF)"
 run "set -e
   [ -d \$HOME/petitio/.git ] || git clone --quiet '$REPO' \$HOME/petitio
   cd \$HOME/petitio && git fetch --quiet origin && git checkout --quiet -B deploy 'origin/$REF'
-  cd \$HOME/petitio && COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack pnpm install --frozen-lockfile --silent && COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack pnpm -s build"
+  cd \$HOME/petitio && COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack pnpm install --frozen-lockfile --silent && COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack pnpm -s build
+  cd \$HOME/petitio && COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack pnpm exec playwright install chromium >/dev/null"
 
 echo "==> settings"
 run "set -e

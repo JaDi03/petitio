@@ -5,8 +5,10 @@ import { Ollama } from "ollama";
 
 import { DEFAULT_LIMITS } from "../agent/loop.js";
 import { openMemory } from "../agent/memory/store.js";
+import type { Actions } from "../agent/actions.js";
 import { pauseSwitch } from "../agent/pause.js";
 import { createRunner } from "../agent/runner.js";
+import { fileClaimInBrowser } from "../channels/browser.js";
 import { telegramClient } from "../channels/telegram.js";
 import { createApp } from "./app.js";
 import { loadConfig } from "./config.js";
@@ -27,6 +29,23 @@ const client = new Ollama({
   // the request itself is cancelled at the deadline, not just abandoned
   fetch: (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(DEFAULT_LIMITS.modelTimeoutMs) }),
 });
+const pause = pauseSwitch(config.DATA_DIR);
+const actions: Actions | undefined = config.airline
+  ? {
+      airline: { name: config.airline.name, email: config.airline.email, formUrl: config.airline.formUrl },
+      agentInbox: config.AGENTMAIL_INBOX,
+      paused: () => pause.paused(),
+      fileClaim: fileClaimInBrowser,
+      async tellOwner(text, photos = []) {
+        await telegram.send(text);
+        for (const p of photos) {
+          // a missing screenshot never undoes the action it shows
+          await telegram.photo(p.png, p.caption).catch((e: unknown) => { log(`⚠️  telegram photo failed: ${e instanceof Error ? e.message : "unknown"}`); });
+        }
+      },
+    }
+  : undefined;
+
 const runner = createRunner({
   memory,
   client,
@@ -36,6 +55,7 @@ const runner = createRunner({
   hold: withHold,
   fetch,
   maxRunsPerDay: config.MAX_RUNS_PER_DAY,
+  ...(actions ? { actions } : {}),
 });
 
 const handle = createApp({
@@ -49,7 +69,7 @@ const handle = createApp({
   enqueue: (caseId, event, ack) => runner.enqueue(caseId, event, ack),
   reply: (text) => telegram.send(text),
   log,
-  pause: pauseSwitch(config.DATA_DIR),
+  pause,
 });
 
 createServer((req, res) => { void handle(req, res); }).listen(config.PORT, () => {

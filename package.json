@@ -28,6 +28,7 @@
   },
   "dependencies": {
     "ollama": "0.6.4",
+    "playwright": "1.65.1",
     "svix": "2.11.1",
     "zod": "4.6.7"
   }

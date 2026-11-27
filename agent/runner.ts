@@ -1,6 +1,8 @@
+import type { Actions } from "./actions.js";
 import { afterTool } from "./narrate.js";
 import { runAgent, type AgentEvent, type ChatClient, type Limits } from "./loop.js";
 import type { Memory } from "./memory/store.js";
+import { submitClaimForm } from "./tools/claim.js";
 import { computeCompensation } from "./tools/compensation.js";
 import { recordFacts } from "./tools/facts.js";
 import { getLaw } from "./tools/law.js";
@@ -20,7 +22,7 @@ export function clipUpdate(text: string): string {
   return `${text.slice(0, MAX_UPDATE_CHARS - 1).trimEnd()}…`;
 }
 
-export const AGENT_TOOLS = [recordFacts, getMetar, getLaw, computeCompensation] as unknown as AgentTool[];
+export const AGENT_TOOLS = [recordFacts, getMetar, getLaw, computeCompensation, submitClaimForm] as unknown as AgentTool[];
 
 export interface Notifier {
   send(text: string): Promise<void>;
@@ -38,6 +40,7 @@ export interface RunnerDeps {
   maxRunsPerDay: number;
   limits?: Limits;
   now?: () => Date;
+  actions?: Actions;
 }
 
 // one run at a time: events queue behind each other so a case is never worked twice at once
@@ -80,7 +83,7 @@ export function createRunner(deps: RunnerDeps) {
           model: deps.model,
           tools: AGENT_TOOLS,
           event,
-          ctx: { caseId, memory: deps.memory, fetch: deps.fetch, now },
+          ctx: { caseId, memory: deps.memory, fetch: deps.fetch, now, ...(deps.actions ? { actions: deps.actions } : {}) },
           ...(deps.limits ? { limits: deps.limits } : {}),
           onStep: async (s) => {
             if (s.phase === "before") {

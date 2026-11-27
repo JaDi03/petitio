@@ -6,6 +6,7 @@ import { z } from "zod";
 export interface Telegram {
   send(text: string): Promise<void>;
   typing(): Promise<void>;
+  photo(png: Buffer, caption: string): Promise<void>;
 }
 
 export function telegramClient(opts: { gateway: string; connectorId: string; chatId: string; fetch: typeof fetch }): Telegram {
@@ -23,6 +24,15 @@ export function telegramClient(opts: { gateway: string; connectorId: string; cha
     // plain text only: no parse_mode, so model text can never become markup or links
     send: (text) => call("sendMessage", { text: text.slice(0, 4000), link_preview_options: { is_disabled: true } }),
     typing: () => call("sendChatAction", { action: "typing" }),
+    async photo(png, caption) {
+      // Bot API: a new photo is uploaded as multipart/form-data, at most 10 MB, caption up to 1024 characters
+      const form = new FormData();
+      form.set("chat_id", opts.chatId);
+      form.set("caption", caption.slice(0, 1024));
+      form.set("photo", new Blob([new Uint8Array(png)], { type: "image/png" }), "screenshot.png");
+      const res = await opts.fetch(`${base}/sendPhoto`, { method: "POST", body: form, signal: AbortSignal.timeout(20_000) });
+      if (!res.ok) throw new Error(`telegram sendPhoto HTTP ${String(res.status)}`);
+    },
   };
 }
 

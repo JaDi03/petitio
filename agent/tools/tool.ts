@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import type { Actions } from "../actions.js";
 import type { Memory } from "../memory/store.js";
 
 export interface ToolContext {
@@ -7,6 +8,8 @@ export interface ToolContext {
   memory: Memory;
   fetch: typeof fetch;
   now: () => Date;
+  // absent when no airline is set up: tools with an effect then refuse
+  actions?: Actions;
 }
 
 export interface AgentTool<S extends z.ZodType = z.ZodType> {
